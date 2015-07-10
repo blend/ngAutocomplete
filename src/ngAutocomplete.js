@@ -34,7 +34,8 @@ angular.module( "ngAutocomplete", [])
       scope: {
         ngModel: '=',
         options: '=?',
-        details: '=?'
+        details: '=?',
+        list: '=?'
       },
 
       link: function(scope, element, attrs, controller) {
@@ -48,11 +49,12 @@ angular.module( "ngAutocomplete", [])
           opts = {}
           if (scope.options) {
 
-            if (scope.options.watchEnter !== true) {
+            if (!watchEnter && scope.options.watchEnter !== true) {
               watchEnter = false
             } else {
               watchEnter = true
             }
+            delete scope.options.watchEnter;
 
             if (scope.options.types) {
               opts.types = []
@@ -103,15 +105,31 @@ angular.module( "ngAutocomplete", [])
           }
         })
 
-        //function to get retrieve the autocompletes first result using the AutocompleteService 
-        var getPlace = function(result) {
+        function queryAutocompleteService(query, cb) {
           var autocompleteService = new google.maps.places.AutocompleteService();
-          if (result.name.length > 0){
+          if (query.length > 0){
             autocompleteService.getPlacePredictions(
-              {
-                input: result.name,
-                offset: result.name.length
-              },
+                {
+                  input: query,
+                  offset: query.length,
+                  componentRestrictions: scope.options
+                }, cb);
+          }
+        }
+
+        controller.defaultSetViewValue = controller.$setViewValue;
+        controller.$setViewValue = function(value) {
+          queryAutocompleteService(value, function(list, status) {
+            scope.$apply(function() {
+              scope.list = list;
+            });
+          });
+          controller.defaultSetViewValue(value);
+        };
+
+        //function to get retrieve the autocompletes first result using the AutocompleteService
+        var getPlace = function(result) {
+          queryAutocompleteService(result.name,
               function listentoresult(list, status) {
                 if(list == null || list.length == 0) {
 
@@ -122,30 +140,29 @@ angular.module( "ngAutocomplete", [])
                 } else {
                   var placesService = new google.maps.places.PlacesService(element[0]);
                   placesService.getDetails(
-                    {'reference': list[0].reference},
-                    function detailsresult(detailsResult, placesServiceStatus) {
+                      {'reference': list[0].reference},
+                      function detailsresult(detailsResult, placesServiceStatus) {
 
-                      if (placesServiceStatus == google.maps.GeocoderStatus.OK) {
-                        scope.$apply(function() {
+                        if (placesServiceStatus == google.maps.GeocoderStatus.OK) {
+                          scope.$apply(function() {
 
-                          controller.$setViewValue(detailsResult.formatted_address);
-                          element.val(detailsResult.formatted_address);
-
-                          scope.details = detailsResult;
-
-                          //on focusout the value reverts, need to set it again.
-                          var watchFocusOut = element.on('focusout', function(event) {
+                            controller.$setViewValue(detailsResult.formatted_address);
                             element.val(detailsResult.formatted_address);
-                            element.unbind('focusout')
-                          })
 
-                        });
+                            scope.details = detailsResult;
+
+                            //on focusout the value reverts, need to set it again.
+                            var watchFocusOut = element.on('focusout', function(event) {
+                              element.val(detailsResult.formatted_address);
+                              element.unbind('focusout')
+                            })
+
+                          });
+                        }
                       }
-                    }
                   );
                 }
               });
-          }
         }
 
         controller.$render = function () {
